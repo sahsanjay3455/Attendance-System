@@ -5,3 +5,5 @@ bcrypt
 pandas
 numpy
 reportlab
+opencv-python-headless
+matplotlib
