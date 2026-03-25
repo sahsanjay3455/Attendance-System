@@ -13,20 +13,18 @@ def show(emp_id):
     # -----------------------------------------------------------
     # ✅ CAMERA CAPTURE FUNCTION
     # -----------------------------------------------------------
+    def capture_photo(emp_id):
+        cam = cv2.VideoCapture(0)
+        ret, frame = cam.read()
 
-      def capture_photo(emp_id):
-            cam = cv2.VideoCapture(0)
-            ret, frame = cam.read()
-    
-            if ret:
-                filename = f"photos/{emp_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                cv2.imwrite(filename, frame)
-                cam.release()
-                return filename
-    
+        if ret:
+            filename = f"photos/{emp_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            cv2.imwrite(filename, frame)
             cam.release()
-            return None
+            return filename
 
+        cam.release()
+        return None
 
     # -----------------------------------------------------------
     # ✅ PUNCH IN (Store FULL datetime)
