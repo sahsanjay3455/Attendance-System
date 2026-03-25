@@ -13,18 +13,22 @@ def show(emp_id):
     # -----------------------------------------------------------
     # ✅ CAMERA CAPTURE FUNCTION
     # -----------------------------------------------------------
+
     def capture_photo(emp_id):
-        cam = cv2.VideoCapture(0)
-        ret, frame = cam.read()
-
-        if ret:
+        import streamlit as st
+        from PIL import Image
+        from datetime import datetime
+    
+        picture = st.camera_input("📸 Capture Your Photo")
+    
+        if picture is not None:
+            image = Image.open(picture)
             filename = f"photos/{emp_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            cv2.imwrite(filename, frame)
-            cam.release()
+            image.save(filename)
             return filename
-
-        cam.release()
+    
         return None
+
 
     # -----------------------------------------------------------
     # ✅ PUNCH IN (Store FULL datetime)
