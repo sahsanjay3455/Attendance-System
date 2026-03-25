@@ -4,3 +4,4 @@ Pillow
 bcrypt
 pandas
 numpy
+reportlab
