@@ -1,39 +1,43 @@
 def show(emp_id):
     import streamlit as st
-    import cv2
     from datetime import datetime
     import pandas as pd
     from database import get_connection
+    import os
 
     st.title("👨‍💼 Employee Dashboard")
 
     conn = get_connection()
     c = conn.cursor()
 
-    # -----------------------------------------------------------
-    # ✅ CAMERA CAPTURE FUNCTION
-    # -----------------------------------------------------------
-    def capture_photo(emp_id):
-        cam = cv2.VideoCapture(0)
-        ret, frame = cam.read()
+    # Ensure photos directory exists
+    os.makedirs("photos", exist_ok=True)
 
-        if ret:
+    # -----------------------------------------------------------
+    # ✅ CAMERA CAPTURE (Streamlit-native)
+    # -----------------------------------------------------------
+    def capture_photo_streamlit(emp_id):
+        st.info("📷 Please capture your photo below before punching.")
+
+        photo = st.camera_input("Take a photo")
+
+        if photo:
             filename = f"photos/{emp_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            cv2.imwrite(filename, frame)
-            cam.release()
+            with open(filename, "wb") as f:
+                f.write(photo.getbuffer())
             return filename
 
-        cam.release()
         return None
 
     # -----------------------------------------------------------
-    # ✅ PUNCH IN (Store FULL datetime)
+    # ✅ PUNCH IN
     # -----------------------------------------------------------
-    if st.button("✅ Punch In"):
+    st.subheader("✅ Punch In / Punch Out")
 
+    if st.button("✅ Punch In"):
         now = datetime.now()
 
-        # Check if already punched in today
+        # Check existing punch-in
         c.execute("""
             SELECT id, punch_in 
             FROM attendance 
@@ -45,21 +49,30 @@ def show(emp_id):
         if existing and existing[1] is not None:
             st.warning("⚠️ Already punched in today!")
         else:
-            photo_path = capture_photo(emp_id)
+            st.info("📸 Punch-in requires a photo")
+            photo_path = capture_photo_streamlit(emp_id)
 
-            c.execute("""
-                INSERT INTO attendance (emp_id, date, punch_in, work_hours, photo_path)
-                VALUES (?, ?, ?, ?, ?)
-            """, (emp_id, now.date().isoformat(), now.isoformat(), 0, photo_path))
+            if not photo_path:
+                st.error("❌ Punch-in cancelled — No photo captured.")
+            else:
+                c.execute("""
+                    INSERT INTO attendance (emp_id, date, punch_in, work_hours, photo_path)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    emp_id,
+                    now.date().isoformat(),
+                    now.isoformat(),
+                    0,
+                    photo_path
+                ))
 
-            conn.commit()
-            st.success("✅ Punch In Recorded Successfully")
+                conn.commit()
+                st.success("✅ Punch In Recorded Successfully")
 
     # -----------------------------------------------------------
-    # ✅ PUNCH OUT (Correct Time Calculation)
+    # ✅ PUNCH OUT
     # -----------------------------------------------------------
     if st.button("⛔ Punch Out"):
-
         now = datetime.now()
 
         c.execute("""
@@ -79,7 +92,6 @@ def show(emp_id):
                 st.warning("⚠️ Already punched out today!")
             else:
                 punch_in_dt = datetime.fromisoformat(punch_in)
-
                 diff_hours = (now - punch_in_dt).total_seconds() / 3600
 
                 c.execute("""
@@ -103,18 +115,15 @@ def show(emp_id):
     st.dataframe(df, use_container_width=True)
 
     # -----------------------------------------------------------
-    # ✅ WEEKLY & MONTHLY WORK HOURS
+    # ✅ WEEKLY & MONTHLY TOTALS
     # -----------------------------------------------------------
     if not df.empty:
-
         df["date"] = pd.to_datetime(df["date"], errors='coerce')
         df["work_hours"] = pd.to_numeric(df["work_hours"], errors='coerce').fillna(0)
 
-        # Weekly Calculation
         current_week = df[df["date"].dt.isocalendar().week == datetime.now().isocalendar().week]
         week_hours = current_week["work_hours"].sum()
 
-        # Monthly Calculation
         current_month = df[df["date"].dt.month == datetime.now().month]
         month_hours = current_month["work_hours"].sum()
 
