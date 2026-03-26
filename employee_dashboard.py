@@ -4,27 +4,35 @@ def show(emp_id):
     import pandas as pd
     from database import get_connection
     import os
+    import tempfile
 
     st.title("👨‍💼 Employee Dashboard")
 
     conn = get_connection()
     c = conn.cursor()
 
-    # Ensure photos directory exists
-    os.makedirs("photos", exist_ok=True)
+    # -----------------------------------------------------------
+    # ✅ CREATE A SAFE, WRITABLE PHOTO DIRECTORY
+    # -----------------------------------------------------------
+    photos_dir = os.path.join(tempfile.gettempdir(), "photos")
+    os.makedirs(photos_dir, exist_ok=True)
 
     # -----------------------------------------------------------
-    # ✅ CAMERA CAPTURE (Streamlit-native)
+    # ✅ CAMERA CAPTURE USING STREAMLIT (No OpenCV)
     # -----------------------------------------------------------
     def capture_photo_streamlit(emp_id):
-        st.info("📷 Please capture your photo below before punching.")
+        st.info("📷 Please capture your photo for attendance")
 
         photo = st.camera_input("Take a photo")
 
         if photo:
-            filename = f"photos/{emp_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            filename = os.path.join(
+                photos_dir,
+                f"{emp_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            )
             with open(filename, "wb") as f:
                 f.write(photo.getbuffer())
+
             return filename
 
         return None
@@ -37,7 +45,7 @@ def show(emp_id):
     if st.button("✅ Punch In"):
         now = datetime.now()
 
-        # Check existing punch-in
+        # Check if already punched in today
         c.execute("""
             SELECT id, punch_in 
             FROM attendance 
@@ -49,7 +57,7 @@ def show(emp_id):
         if existing and existing[1] is not None:
             st.warning("⚠️ Already punched in today!")
         else:
-            st.info("📸 Punch-in requires a photo")
+            st.info("📸 Capture photo before punching in")
             photo_path = capture_photo_streamlit(emp_id)
 
             if not photo_path:
@@ -65,7 +73,6 @@ def show(emp_id):
                     0,
                     photo_path
                 ))
-
                 conn.commit()
                 st.success("✅ Punch In Recorded Successfully")
 
@@ -98,7 +105,11 @@ def show(emp_id):
                     UPDATE attendance
                     SET punch_out=?, work_hours=?
                     WHERE id=?
-                """, (now.isoformat(), diff_hours, att_id))
+                """, (
+                    now.isoformat(),
+                    diff_hours,
+                    att_id
+                ))
 
                 conn.commit()
                 st.success(f"✅ Punch Out Recorded — Worked {diff_hours:.2f} hours")
@@ -115,7 +126,7 @@ def show(emp_id):
     st.dataframe(df, use_container_width=True)
 
     # -----------------------------------------------------------
-    # ✅ WEEKLY & MONTHLY TOTALS
+    # ✅ WEEKLY & MONTHLY HOURS TOTAL
     # -----------------------------------------------------------
     if not df.empty:
         df["date"] = pd.to_datetime(df["date"], errors='coerce')
