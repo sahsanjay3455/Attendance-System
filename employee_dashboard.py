@@ -3,8 +3,8 @@ def show(emp_id):
     from datetime import datetime
     import pandas as pd
     from database import get_connection
-    import os
     import tempfile
+    import os
 
     st.title("👨‍💼 Employee Dashboard")
 
@@ -12,30 +12,22 @@ def show(emp_id):
     c = conn.cursor()
 
     # -----------------------------------------------------------
-    # ✅ CREATE A SAFE, WRITABLE PHOTO DIRECTORY
+    # ✅ PHOTO DIRECTORY (Always Writable)
     # -----------------------------------------------------------
     photos_dir = os.path.join(tempfile.gettempdir(), "photos")
     os.makedirs(photos_dir, exist_ok=True)
 
     # -----------------------------------------------------------
-    # ✅ CAMERA CAPTURE USING STREAMLIT (No OpenCV)
+    # ✅ ALWAYS SHOW CAMERA
     # -----------------------------------------------------------
-    def capture_photo_streamlit(emp_id):
-        st.info("📷 Please capture your photo for attendance")
+    st.subheader("📸 Capture Your Photo (Required for Punch In)")
+    photo = st.camera_input("Take a photo")
 
-        photo = st.camera_input("Take a photo")
-
-        if photo:
-            filename = os.path.join(
-                photos_dir,
-                f"{emp_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            )
-            with open(filename, "wb") as f:
-                f.write(photo.getbuffer())
-
-            return filename
-
-        return None
+    if photo:
+        st.session_state["captured_photo"] = photo
+        st.success("✅ Photo captured successfully!")
+    else:
+        st.session_state["captured_photo"] = None
 
     # -----------------------------------------------------------
     # ✅ PUNCH IN
@@ -43,9 +35,15 @@ def show(emp_id):
     st.subheader("✅ Punch In / Punch Out")
 
     if st.button("✅ Punch In"):
+
+        # Check if photo exists
+        if not st.session_state.get("captured_photo"):
+            st.error("❌ Please capture a photo before punching in.")
+            return
+
         now = datetime.now()
 
-        # Check if already punched in today
+        # Check existing punch-in
         c.execute("""
             SELECT id, punch_in 
             FROM attendance 
@@ -56,25 +54,32 @@ def show(emp_id):
 
         if existing and existing[1] is not None:
             st.warning("⚠️ Already punched in today!")
-        else:
-            st.info("📸 Capture photo before punching in")
-            photo_path = capture_photo_streamlit(emp_id)
+            return
 
-            if not photo_path:
-                st.error("❌ Punch-in cancelled — No photo captured.")
-            else:
-                c.execute("""
-                    INSERT INTO attendance (emp_id, date, punch_in, work_hours, photo_path)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    emp_id,
-                    now.date().isoformat(),
-                    now.isoformat(),
-                    0,
-                    photo_path
-                ))
-                conn.commit()
-                st.success("✅ Punch In Recorded Successfully")
+        # Save photo
+        filename = os.path.join(
+            photos_dir,
+            f"{emp_id}_{now.strftime('%Y%m%d_%H%M%S')}.jpg"
+        )
+
+        with open(filename, "wb") as f:
+            f.write(st.session_state["captured_photo"].getbuffer())
+
+        # Insert DB entry
+        c.execute("""
+            INSERT INTO attendance (emp_id, date, punch_in, work_hours, photo_path)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            emp_id,
+            now.date().isoformat(),
+            now.isoformat(),
+            0,
+            filename
+        ))
+
+        conn.commit()
+
+        st.success("✅ Punch In Recorded Successfully")
 
     # -----------------------------------------------------------
     # ✅ PUNCH OUT
@@ -92,30 +97,28 @@ def show(emp_id):
 
         if not row:
             st.error("❌ No punch-in found for today!")
-        else:
-            att_id, punch_in, punch_out = row
+            return
 
-            if punch_out is not None:
-                st.warning("⚠️ Already punched out today!")
-            else:
-                punch_in_dt = datetime.fromisoformat(punch_in)
-                diff_hours = (now - punch_in_dt).total_seconds() / 3600
+        att_id, punch_in, punch_out = row
 
-                c.execute("""
-                    UPDATE attendance
-                    SET punch_out=?, work_hours=?
-                    WHERE id=?
-                """, (
-                    now.isoformat(),
-                    diff_hours,
-                    att_id
-                ))
+        if punch_out is not None:
+            st.warning("⚠️ Already punched out today!")
+            return
 
-                conn.commit()
-                st.success(f"✅ Punch Out Recorded — Worked {diff_hours:.2f} hours")
+        punch_in_dt = datetime.fromisoformat(punch_in)
+        diff_hours = (now - punch_in_dt).total_seconds() / 3600
+
+        c.execute("""
+            UPDATE attendance
+            SET punch_out=?, work_hours=?
+            WHERE id=?
+        """, (now.isoformat(), diff_hours, att_id))
+
+        conn.commit()
+        st.success(f"✅ Punch Out Recorded — Worked {diff_hours:.2f} hours")
 
     # -----------------------------------------------------------
-    # ✅ ATTENDANCE SUMMARY TABLE
+    # ✅ ATTENDANCE SUMMARY
     # -----------------------------------------------------------
     st.subheader("📅 Attendance Summary")
 
@@ -126,9 +129,10 @@ def show(emp_id):
     st.dataframe(df, use_container_width=True)
 
     # -----------------------------------------------------------
-    # ✅ WEEKLY & MONTHLY HOURS TOTAL
+    # ✅ WEEKLY & MONTHLY TOTALS
     # -----------------------------------------------------------
     if not df.empty:
+
         df["date"] = pd.to_datetime(df["date"], errors='coerce')
         df["work_hours"] = pd.to_numeric(df["work_hours"], errors='coerce').fillna(0)
 
