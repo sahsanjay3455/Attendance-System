@@ -1,6 +1,5 @@
 def show(emp_id):
     import streamlit as st
-    import cv2
     from datetime import datetime
     import pandas as pd
     from database import get_connection
@@ -13,18 +12,6 @@ def show(emp_id):
     # -----------------------------------------------------------
     # ✅ CAMERA CAPTURE FUNCTION
     # -----------------------------------------------------------
-    def capture_photo(emp_id):
-        cam = cv2.VideoCapture(0)
-        ret, frame = cam.read()
-
-        if ret:
-            filename = f"photos/{emp_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            cv2.imwrite(filename, frame)
-            cam.release()
-            return filename
-
-        cam.release()
-        return None
 
     # -----------------------------------------------------------
     # ✅ PUNCH IN (Store FULL datetime)
@@ -48,9 +35,9 @@ def show(emp_id):
             photo_path = capture_photo(emp_id)
 
             c.execute("""
-                INSERT INTO attendance (emp_id, date, punch_in, work_hours, photo_path)
+                INSERT INTO attendance (emp_id, date, punch_in, work_hours)
                 VALUES (?, ?, ?, ?, ?)
-            """, (emp_id, now.date().isoformat(), now.isoformat(), 0, photo_path))
+            """, (emp_id, now.date().isoformat(), now.isoformat(), 0)
 
             conn.commit()
             st.success("✅ Punch In Recorded Successfully")
